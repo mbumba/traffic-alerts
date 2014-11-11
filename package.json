@@ -1,0 +1,21 @@
+{
+  "name" : "traffic-alerts",
+  "version" : "0.1a",
+  "description" : "Traffic Alerts",
+  "main" : "./index.js",
+  "author" : {
+    "name" : "Martin Bumba and Sara Fatih"
+  },
+  "private" : true,
+  "license" : "BSD",
+  "dependencies" : {
+    "express" : "4.10.1",
+    "fb" : "0.7.0",
+    "mysql" : "2.5.2",
+    "socket.io" : "1.2.0"
+  },
+  "keywords" : [ ],
+  "bugs" : {
+    "url" : "null"
+  }
+}
