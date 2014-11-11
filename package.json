@@ -1,6 +1,6 @@
 {
   "name" : "traffic-alerts",
-  "version" : "0.1",
+  "version" : "0.1.2beta",
   "description" : "Traffic Alerts",
   "main" : "./index.js",
   "author" : {
