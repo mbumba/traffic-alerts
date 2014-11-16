@@ -11,7 +11,8 @@ cd traffic-alerts
 npm install
 node .
 ```
-
+## Requirements
+MySQL 5.5.4
 
 ## Features
 
