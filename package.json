@@ -1,7 +1,7 @@
 {
   "name" : "traffic-alerts",
-  "version" : "0.1.2beta",
-  "description" : "Traffic Alerts",
+  "version" : "0.1.4",
+  "description" : "The main goal behind this application is to raise awareness about road problems among the users. That way, drivers can avoid going through some path just by consulting this application.",
   "main" : "./index.js",
   "author" : {
     "name" : "Martin Bumba and Sara Fatih"
@@ -12,7 +12,10 @@
     "express" : "4.10.1",
     "fb" : "0.7.0",
     "mysql" : "2.5.2",
-    "socket.io" : "1.2.0"
+    "socket.io" : "1.2.0",
+    "validator" : "3.22.1",
+    "cron" : "1.0.5",
+    "image-type" : "*"
   },
   "keywords" : [ ],
   "bugs" : {
