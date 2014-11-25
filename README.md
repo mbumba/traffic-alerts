@@ -5,9 +5,9 @@ The main goal behind this application is to raise awareness about road problems 
 You can see a live demo on http://cloud-25.skelabb.ltu.se
 
 ## Requirements
-MySQL 5.5.4
-Node.js v0.10.33
-Created Facebook APP (https://developers.facebook.com/apps) 
+- MySQL 5.5.4
+- Node.js v0.10.33
+- Created Facebook APP (https://developers.facebook.com/apps) 
 
 
 ## How to install and use
