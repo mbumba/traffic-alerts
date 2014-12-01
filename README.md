@@ -5,9 +5,9 @@ The main goal behind this application is to raise awareness about road problems 
 You can see a live demo on http://cloud-25.skelabb.ltu.se
 
 ## Requirements
-- MySQL 5.5.4
-- Node.js v0.10.33
-- Created Facebook APP (https://developers.facebook.com/apps) 
+MySQL 5.5.4
+Node.js v0.10.33
+Created Facebook APP (https://developers.facebook.com/apps) 
 
 
 ## How to install and use
@@ -15,7 +15,7 @@ You can see a live demo on http://cloud-25.skelabb.ltu.se
 ```sh   
 git clone https://github.com/mbumba/traffic-alerts
 cd traffic-alerts
-npm install
+npm install    #will install all dependencies
 ```
 Now is the time for create new MySQL database and then import the table from file: traffic-alerts.sql
 ```sh
@@ -26,7 +26,7 @@ EXIT;
 #Now you can import table from .sql file:
 mysql -u username -p -D traffic-alerts < traffic-alerts.sql #Type your MySQL username instead of username
 ```
-Edit the server configuration file and set MySQL credentials a Facebook APP credentials.
+Edit the server configuration file and set MySQL credentials and Facebook APP credentials.
 ```sh
 nano config.js
 ```
