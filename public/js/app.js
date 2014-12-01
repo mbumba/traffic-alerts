@@ -1,4 +1,4 @@
-(function(window) {
+(function(document, window, google, validator, moment) {
     'use strict';
 
     var app = app || {};
@@ -10,23 +10,23 @@
     var map = null;
     var mapCentered = false;
 
+
     //GEO variables
     var geoLat = null;
     var geoLng = null;
-    var geoCoder = new google.maps.Geocoder();    
     var geoInitialized = false;
 
     //maps markers and info window
     var positionMarker = null;
     var alertMarkers = {};
-    var infoWindow = new google.maps.InfoWindow({maxWidth: 450});
+    var infoWindow = new google.maps.InfoWindow({maxWidth: 400});
     var infoWindowListener = null;
     var infoWindowListenerClose = null;
+    var clickMapListenerHandle = null;
 
     //stored picture
     var takenPicture = null;
     var myVideo = null;
-    var cameraInitialized = false;
 
     //constants
     var allowedIcons = [1, 2, 3, 4];
@@ -42,12 +42,16 @@
             geoLng = localStorage.getItem("lng");
         }
 
-        //wait for FB API and check login
+        //wait for FB API which is loaded asysnchronously and  then check login
         app.fbEnsureInit(app.checkLogin);
 
-
         //initialize geolocation
-        navigator.geolocation.watchPosition(app.positionCallback, app.positionError);
+        navigator.geolocation.watchPosition(app.positionCallback, app.positionError,
+                {
+                    timeout: Infinity,
+                    enableHighAccuracy: true,
+                    maximumAge: 3*24*60*60*1000
+                });
 
         //initialize camera
         navigator.myGetMedia = (navigator.getUserMedia ||
@@ -56,22 +60,25 @@
                 navigator.msGetUserMedia);
         navigator.myGetMedia({video: true}, app.cameraCallback, app.cameraError);
 
-             
-        $('#form-expires').datetimepicker({
-            format: 'MM d, yyyy hh:ii',
-            weekStart: 1,
-            todayBtn:  1,
-            autoclose: 1,
-            todayHighlight: 1,
-            maxView: 2,
-            startView: 2,
-            minuteStep: 5,
-            forceParse: 0
-        }).on('show', function(ev){   
-            var d = new Date((new Date()).getTime() + (15*60*1000));
-            $(this).datetimepicker('setStartDate', d);   
-        });        
+        //form expiries input set to datetimepicker
+        $('#form-expires').datetimepicker({     
+            useSeconds: false,           
+            format:'MMMM D, YYYY HH:mm', 
+            minDate: moment().format('MMMM D, YYYY'),
+            minuteStepping:15         
+        });
         
+ 
+        
+        //create nice input type="file"
+        $('input[type=file]').bootstrapFileInput();
+        
+        //for bootstrap navigation auto collapse after click on item
+        $('.navbar-nav').click(function(){
+            if($('.navbar-header .navbar-toggle').css('display') !== 'none') {                
+                $('.navbar-collapse').collapse('hide');
+            }
+        });
 
     };
 
@@ -94,7 +101,7 @@
     app.checkLogin = function() {
         //add event listener for FB login button
         document.getElementById('login-button').addEventListener('click', app.loginViaFacebook);
-        
+
         //get login status from Facebook
         FB.getLoginStatus(function(response) {
             if (response.status === 'connected') {
@@ -111,29 +118,29 @@
         //call external login aneg wait for response callback
         FB.login(function(response) {
             if (response.status === 'connected') {
-                app.connectToServer();                
+                app.connectToServer();
             }
         });
     };
-    
+
     //open server connection
-    app.connectToServer = function () {
-      socket = new io();      
-      socket.on('connect', app.connectedToServer);  
-      socket.connect();
+    app.connectToServer = function() {
+        socket = new io();
+        socket.on('connect', app.connectedToServer);
+        socket.connect();
     };
-    
+
     //if is connected to server emits  log me with FB token
-    app.connectedToServer = function() { 
-        socket.emit('log-me', FB.getAuthResponse()['accessToken'], app.serverLoggedIn);           
+    app.connectedToServer = function() {
+        socket.emit('log-me', FB.getAuthResponse()['accessToken'], app.serverLoggedIn);
     };
-           
-    
+
+
     app.serverLoggedIn = function(res, error) {
-        if(res) {
-            if(!initialized)
-                app.initComponents();  
-        }  
+        if (res) {
+            if (!initialized)
+                app.initComponents();
+        }
         else
             app.alert('danger', 'Error in logging into server side(' + error + ').');
     };
@@ -142,7 +149,7 @@
     app.initComponents = function() {
         //listeners of messages from server
         socket.on('new-alert', app.receivedNewAlert);
-        socket.on('removed-alert', app.receivedRemovedAlert);        
+        socket.on('removed-alert', app.receivedRemovedAlert);
         //imidietaly afer connect get list of alerts + log me to server with FBtoken, callback
         socket.emit('get-list', app.receivedAlertsList);
 
@@ -163,11 +170,14 @@
         document.getElementById('menu-new-alert').addEventListener('click', app.showNewAlertModal);
         //listeners for form elements
         document.getElementById('form-take-photo').addEventListener('click', app.takePhoto);
+        document.getElementById('form-file-select').addEventListener('change', app.fileSelected);
+        document.getElementById('form-get-actual-position').addEventListener('click', app.getPosition);
+        document.getElementById('form-get-position-from-map').addEventListener('click', app.getPositionFromMap);
         document.getElementById('form-publish').addEventListener('click', app.publishAlert);
 
         //listener for info window
         infoWindowListener = google.maps.event.addListener(infoWindow, 'domready', app.infoWindowLoaded);
-                    
+
         infoWindowListenerClose = google.maps.event.addListener(infoWindow, 'closeclick', app.infoWindowClosed);
         //jquery listener for click in alert box
         $('.alert-messages').on('click', '.show-alert', app.newAlertLinkListener);
@@ -176,9 +186,9 @@
             if (response.name) {
                 document.getElementById('menu-logout').innerHTML = document.getElementById('menu-logout').innerHTML + ' [' + response.name + ']';
             }
-        });            
-        
-        
+        });
+
+
         initialized = true;
     };
 
@@ -203,18 +213,23 @@
         document.getElementById('menu-logout').removeEventListener('click', app.logout);
         document.getElementById('menu-new-alert').removeEventListener('click', app.showNewAlertModal);
         document.getElementById('form-take-photo').removeEventListener('click', app.takePhoto);
+        document.getElementById('form-file-select').removeEventListener('change', app.fileSelected);
+        document.getElementById('form-get-actual-position').removeEventListener('click', app.getPosition);
+
+
         document.getElementById('form-publish').removeEventListener('click', app.publishAlert);
         google.maps.event.removeListener(infoWindowListener);
         google.maps.event.removeListener(infoWindowListenerClose);
-   
+
         $('.alert-messages').off('click', '.show-alert', app.newAlertLinkListener);
 
         //remove markers and then map
         google.maps.event.clearInstanceListeners(window);
         app.removeAllMarkers(true);
-        map = null;
         positionMarker.setMap(null);
         positionMarker = null;
+        map = null;
+
 
         document.getElementById('menu-logout').innerHTML = '<span class="glyphicon glyphicon-log-out"> </span> Logout';
         initialized = false;
@@ -224,8 +239,8 @@
     //event position loaded
     app.positionCallback = function(position) {
         //store position to global variable
-        geoLat = position.coords.latitude;
-        geoLng = position.coords.longitude;
+        geoLat = position.coords.latitude.toFixed(6);
+        geoLng = position.coords.longitude.toFixed(6);
 
         //save to local storage
         localStorage.setItem("lat", geoLat);
@@ -235,7 +250,7 @@
         if (map !== null && positionMarker !== null) {
             var position = new google.maps.LatLng(geoLat, geoLng);
             //set my position marker in map
-            positionMarker.setPosition(position);           
+            positionMarker.setPosition(position);
 
             //center the map at first time
             if (!mapCentered) {
@@ -244,26 +259,32 @@
             }
         }
         geoInitialized = true;
+        document.getElementById('form-get-actual-position').style.display = 'inline-block';
+
 
     };
     //event geolocation error 
     app.positionError = function(error) {
-        app.alert('danger', 'Sensor of position cannot be initialized. The feature of new alert is disabled, please refresh browser and allow the position sensor.');
+        app.alert('danger', 'Sensor of position cannot be initialized. Some features of this application are disabled, if you want to use those please refresh browser and allow the position sensor.');
     };
 
 
 
     //METHODS FOR CAMERA
     //event camera connected, set stream to video frame
-    app.cameraCallback = function(stream) {
-        cameraInitialized = true;
+    app.cameraCallback = function(stream) {        
+        document.getElementById('form-take-photo').style.display = 'block';
+        if(!takenPicture) {
+            document.getElementById('video-frame').style.display = 'block';
+            document.getElementById('preview').style.display = 'none';
+        }
         myVideo = document.getElementById('video-frame');
         myVideo.src = window.URL ? window.URL.createObjectURL(stream) : stream;
-        myVideo.play();
+
     };
     //event camera error event
     app.cameraError = function(error) {
-        app.alert('danger', 'Camera cannot be initialized. The feature of new alert is disabled, please refresh browser and allow camera.');
+        app.alert('warning', 'Camera cannot be initialized. Some features of this application are disabled, if you want to use those please refresh browser and allow camera.');
     };
 
     //MENU ITEMS EVENTS
@@ -280,10 +301,11 @@
     };
     //event click on "New alert"
     app.showNewAlertModal = function() {
-        if (cameraInitialized && geoInitialized)
-            $('#new-alert').modal('show');
-        else
-            app.alert('danger', 'Camera or position sensor is not sucesfully initialized, this feature will be enabled after these two things will be initialized.');
+        if (clickMapListenerHandle !== null) {
+            google.maps.event.removeListener(clickMapListenerHandle);
+            clickMapListenerHandle = null;
+        }
+        $('#new-alert').modal('show');
     };
 
     app.newAlertLinkListener = function(e) {
@@ -298,7 +320,7 @@
         e.preventDefault();
         app.cameraToggle(e.target.getAttribute("data-type"));
     };
-    //toggle camera
+    //toggle camera 
     app.cameraToggle = function(type) {
         if (type == 1) {
             var canvas = document.createElement('canvas');
@@ -308,26 +330,82 @@
             canvas.height = (myVideo.videoHeight < 600) ? myVideo.videoHeight : 600;
             context.drawImage(myVideo, 0, 0, canvas.width, canvas.height);
             //save canvas image as data url
-            var dataURL = canvas.toDataURL("image/jpeg");
+            var dataURL = canvas.toDataURL('image/jpeg');
             //set preview image src to dataURL          
             document.getElementById('preview').src = dataURL;
             document.getElementById('video-frame').style.display = 'none';
             document.getElementById('preview').style.display = 'block';
-            document.getElementById('form-take-photo').setAttribute("data-type", 2);
-            document.getElementById('form-take-photo').innerHTML = "Try it again";
-            document.getElementById('form-position').value = geoLat + "; " + geoLng;
-            app.showAddressInForm(geoLat, geoLng);
+            document.getElementById('form-take-photo').setAttribute('data-type', 2);
+            document.getElementById('form-take-photo').innerHTML = 'Try it again';
             takenPicture = dataURL;
         }
         else {
             document.getElementById('video-frame').style.display = 'block';
             document.getElementById('preview').style.display = 'none';
-            document.getElementById('form-take-photo').setAttribute("data-type", 1);
-            document.getElementById('form-take-photo').innerHTML = "Take a photo and get actual position";
-            document.getElementById('form-position').value = null;
-            document.getElementById('form-position-address').innerHTML = "";
+            document.getElementById('form-take-photo').setAttribute('data-type', 1);
+            document.getElementById('form-take-photo').innerHTML = '<span class="glyphicon glyphicon-camera"> </span> Take a photo';
             takenPicture = null;
         }
+    };
+    //if uploaded image is selected - load that
+    app.fileSelected = function(e) {
+        e.preventDefault();
+        var file = e.target.files[0];
+
+        if (!file.type.match(/image\/jpeg/)) {
+            app.alert('danger', 'Choosen file must be JPEG image!');
+            return;
+        }
+        var fr = new FileReader();
+        fr.onloadend = function(evt) {
+            if (evt.target.readyState === FileReader.DONE) {
+                var image = new Image;
+                image.src = evt.target.result;
+                image.onload = function() {
+                    var canvas = document.createElement('canvas');
+                    document.body.appendChild(canvas);
+                    var context = canvas.getContext('2d');
+                    canvas.width = (image.width < 800) ? image.width : 800;
+                    canvas.height = (image.height < 600) ? image.height : 600;
+                    context.drawImage(image, 0, 0, canvas.width, canvas.height);
+                    var dataURL = canvas.toDataURL('image/jpeg');
+                    takenPicture = dataURL;
+                    document.getElementById('video-frame').style.display = 'none';
+                    document.getElementById('form-take-photo').innerHTML = 'Try take a photo from camera';
+                    document.getElementById('form-take-photo').setAttribute('data-type', 2);
+                    document.getElementById('preview').src = takenPicture;
+                    document.getElementById('preview').style.display = 'block';
+                };
+            }
+        };
+        fr.readAsDataURL(e.target.files[0]); // get captured image as data URI
+    };
+
+    //click on button for get actual position from position sensor
+    app.getPosition = function(e) {
+        e.preventDefault();
+        if (geoInitialized) {
+            document.getElementById('form-position').value = geoLat + "; " + geoLng;
+        }
+    };
+
+    //click on button for get actual position from MAP
+    app.getPositionFromMap = function(e) {
+        e.preventDefault();
+        if (clickMapListenerHandle !== null) {
+            google.maps.event.removeListener(clickMapListenerHandle);
+            clickMapListenerHandle = null;
+        }
+        clickMapListenerHandle = google.maps.event.addListener(map, 'click', app.clickedOnMap);
+        $('#new-alert').modal('hide');
+        app.alert('info', 'Please click (tap) to map to specify exact position.', 4000);
+    };
+    //event clicked on position in map
+    app.clickedOnMap = function(e) {
+        document.getElementById('form-position').value = e.latLng.lat().toFixed(6) + "; " + e.latLng.lng().toFixed(6);
+        $('#new-alert').modal('show');
+        google.maps.event.removeListener(clickMapListenerHandle);
+        clickMapListenerHandle = null;
     };
     //event "Publish alert"
     app.publishAlert = function(e) {
@@ -346,7 +424,7 @@
             return;
         }
         var positionSplit = position.split('; ');
-        if (!(positionSplit.length == 2 && validator.isFloat(positionSplit[0]) && validator.isFloat(positionSplit[1]))) {
+        if (!(positionSplit.length === 2 && validator.isFloat(positionSplit[0]) && validator.isFloat(positionSplit[1]))) {
             app.alert('danger', 'GEO position is required for send a form, please wait for right coordinates.');
             return;
         }
@@ -364,7 +442,7 @@
             app.alert('danger', 'Icon have to be choosen properly.');
             return;
         }
-        
+
         //get and check expires date
         var expires = new Date(document.getElementById('form-expires').value);
         if (!expires) {
@@ -372,7 +450,7 @@
             return;
         }
 
-        if (!validator.isAfter(expires, new Date((new Date()).getTime() + (5*60*1000)))) {
+        if (!validator.isAfter(expires, new Date((new Date()).getTime() + (5 * 60 * 1000)))) {
             app.alert('danger', 'Expires date must be more in future.');
             return;
         }
@@ -403,23 +481,7 @@
 
     };
 
-    //show approx. address in form 
-    app.showAddressInForm = function(lat, lng) {
-        if (geoCoder !== null && lat !== null && lng !== null) {
-            var latlng = new google.maps.LatLng(lat, lng);
-            geoCoder.geocode({'latLng': latlng}, function(results, status) {
-                if (status === google.maps.GeocoderStatus.OK) {
-                    if (results[1]) {
-                        document.getElementById('form-position-address').innerHTML
-                                = "Aprx. address: " + results[1].formatted_address;
-                    }
-                } else {
-                    console.log("Failed get address in showAddressInForm: " + status);
-                }
-            });
-        }
 
-    };
 
     //MAP METHODS
     //load map
@@ -433,18 +495,19 @@
         //create map
         map = new google.maps.Map(document.getElementById('map-canvas'),
                 mapOptions);
-                
+
         //create position marker 
-        
-        positionMarker = new google.maps.Marker({ 
-                    position: location,
-                    map: map,
-                    animation: google.maps.Animation.DROP,
-                    icon: 'images/icons/my-location.png',
-                    title: 'My position',
-                    zIndex: google.maps.Marker.MAX_ZINDEX + 1
+
+        positionMarker = new google.maps.Marker({
+            position: location,
+            map: map,
+            animation: google.maps.Animation.DROP,
+            icon: 'images/icons/my-location.png',
+            title: 'My position',
+            zIndex: google.maps.Marker.MAX_ZINDEX + 1
         });
     };
+
     //app add new marker
     app.addMarker = function(data) {
         if (!alertMarkers[data.id]) {
@@ -472,26 +535,29 @@
 
                 var removeButton = '';
                 if (data.owner == 1) {
-                    removeButton = '<button class="btn btn-danger btn-block" id="remove-alert" data-id="' + data.id + '"><span class="glyphicon glyphicon-remove"> </span> Remove this alert</button>';
+                    removeButton = '<p><button class="btn btn-danger btn-block" id="remove-alert" data-id="' + data.id + '"><span class="glyphicon glyphicon-remove"> </span> Remove this alert</button></p>';
                 }
                 var published = new Date(data.published);
-                var expireOn = new Date(data.expire_on);
+                var expiresOn = new Date(data.expire_on);
                 var now = (new Date()).getTime();
-                var percentage = validator.toInt(((now-published.getTime()) * 100) / (expireOn.getTime()-published.getTime())); 
-                
-                var contentString = '<div id="content">' +
-                        '<div id="bodyContent">' +
-                        '<p><span class="label label-default">Published on: ' + published.format('MMMM DD, YYYY hh:mm') + '</span><span class="label label-warning">Expires on: ' + expireOn.format('MMMM DD, YYYY hh:mm') + '</span></p>' +
-                        '<div class="progress"> <div class="progress-bar" role="progressbar" aria-valuenow="' + percentage + '" aria-valuemin="0" aria-valuemax="100" style="width: ' + percentage + '%;">' + percentage + '% </div> </div>'+
-                        '<p><img src="' + data.path + '" alt="Photo" id="content-image" /></p>' +
-                        
-                        '<p>' + data.note + '</p>' +
-                        removeButton +
-                        '</div>' +
+                var percentage = validator.toInt(((now - published.getTime()) * 100) / (expiresOn.getTime() - published.getTime()));
+                var contentString = '<div id="infowindow-content">' +                      
+                        '<p><span class="label label-default">Published on: ' + moment(published).format('MMMM DD, YYYY HH:mm') + '</span> <span class="label label-warning">Expires on: ' + moment(expiresOn).format('MMMM DD, YYYY HH:mm') + '</span></p>' +
+                        '<img src="' + data.path + '" alt="Photo" id="content-image" />' +                        
+                        '<p><strong>Note: </strong>' + data.note + '</p>' +   
+                        '<div class="nopopup"><div class="fb-like" data-href="'  + document.URL.replace(/#.*$/, '') +'#show-' + data.id + '" data-layout="button_count" data-action="like" data-show-faces="true" data-share="false"></div></div>' +
+                        '<div class="progress"> <div class="progress-bar" role="progressbar" aria-valuenow="' + percentage + '" aria-valuemin="0" aria-valuemax="100" style="width: ' + percentage + '%;">' + percentage + '% </div> </div>' +
+                        removeButton +                        
                         '</div>';
 
                 infoWindow.setContent(contentString);
                 infoWindow.open(map, alertMarkers[data.id]);
+
+	
+
+
+                FB.XFBML.parse();
+
 
                 //save or not to browser history
                 if (!e.notSave) {
@@ -584,10 +650,10 @@
             app.addMarker(data[i]);
         }
         //check if some alert it could be showed
-        if(location.hash !== null) {
-            var regExp = /#show\-(\d+)/gi; 
+        if (location.hash !== null) {
+            var regExp = /#show\-(\d+)/gi;
             var results = regExp.exec(location.hash);
-            if(results) {
+            if (results) {
                 app.showAlert(results[1]);
             }
         }
@@ -606,7 +672,7 @@
     //ALERTS
     //show alert message
     app.alert = function(type, message, duration) {
-        if(!duration)
+        if (!duration)
             duration = 3000;
         var htmlAlert = '<div class="alert alert-' + type + ' alert-dismissible" role="alert"><button type="button" class="close" data-dismiss="alert"><span aria-hidden="true">&times;</span><span class="sr-only">Close</span></button> ' + message + '</div>';
 
@@ -626,4 +692,5 @@
         window.addEventListener('load', app.init, false);
     else
         window.attachEvent('onload', app.init, false);
-}(window));
+}(document, window, google, validator, moment));
+

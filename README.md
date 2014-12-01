@@ -26,9 +26,13 @@ EXIT;
 #Now you can import table from .sql file:
 mysql -u username -p -D traffic-alerts < traffic-alerts.sql #Type your MySQL username instead of username
 ```
-Edit the configuration file and set MySQL credentials, Facebook APP credentials.
+Edit the server configuration file and set MySQL credentials a Facebook APP credentials.
 ```sh
 nano config.js
+```
+Edit the Facebook loader for client side and set Facebook APP ID
+```sh
+nano public/js/facebook-loader.js
 ```
 In this point is everything ready for run the application.
 ```sh
