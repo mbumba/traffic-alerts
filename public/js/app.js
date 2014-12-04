@@ -609,9 +609,12 @@
                 var expiresOn = new Date(data.expire_on);
                 var now = (new Date()).getTime();
                 var percentage = validator.toInt(((now - published.getTime()) * 100) / (expiresOn.getTime() - published.getTime()));
+                var imgHost = "";
+                if(host)
+                    imgHost = host + '/';
                 var contentString = '<div id="infowindow-content">' +
                         '<p><span class="label label-default">Published on: ' + moment(published).format('MMMM DD, YYYY HH:mm') + '</span> <span class="label label-warning">Expires on: ' + moment(expiresOn).format('MMMM DD, YYYY HH:mm') + '</span></p>' +
-                        '<img src="' + data.path + '" alt="Photo" id="content-image" />' +
+                        '<img src="' + imgHost + data.path + '" alt="Photo" id="content-image" />' +
                         '<p><strong>Note: </strong>' + data.note + '</p>' +
                         '<div class="nopopup"><div class="fb-like" data-href="' + document.URL.replace(/#.*$/, '') + '#show-' + data.id + '" data-layout="button_count" data-action="like" data-show-faces="true" data-share="false"></div></div>' +
                         '<div class="progress"> <div class="progress-bar" role="progressbar" aria-valuenow="' + percentage + '" aria-valuemin="0" aria-valuemax="100" style="width: ' + percentage + '%;">' + percentage + '% </div> </div>' +
