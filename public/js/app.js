@@ -1,8 +1,21 @@
+/* TRAFFIC ALERTS CLIENT SIDE APPLICATION
+ * Martin Bumba and Sara Fatih
+ * 2014
+ * */
 (function(document, window, google, validator, moment) {
     'use strict';
 
+    /* 
+     * URL of host, where running the TrafficAlerts server, this variable should including port like: http://cloud-25.skelabb.ltu.se:80
+     * If is null it will use current host and port
+     */ 
+    var host = null;
+    
+    
+    
+    //main object variable    
     var app = app || {};
-
+    
     //socket
     var socket = null;
 
@@ -50,32 +63,50 @@
                 {
                     timeout: Infinity,
                     enableHighAccuracy: true,
-                    maximumAge: 3*24*60*60*1000
+                    maximumAge: 3 * 24 * 60 * 60 * 1000
                 });
+
+
+
+   
 
         //initialize camera
         navigator.myGetMedia = (navigator.getUserMedia ||
                 navigator.webkitGetUserMedia ||
                 navigator.mozGetUserMedia ||
                 navigator.msGetUserMedia);
-        navigator.myGetMedia({video: true}, app.cameraCallback, app.cameraError);
-
+        
+        //when mygetmedia is available
+        if (typeof navigator.myGetMedia !== 'undefined') {
+            navigator.myGetMedia({video: true}, app.cameraCallback, app.cameraError);
+        }
+        
+        //this part is for users with Chrome > 30 and is for change the camera to back one                        
+        if (typeof MediaStreamTrack !== 'undefined' && typeof MediaStreamTrack.getSources !== 'undefined') {            
+            MediaStreamTrack.getSources(app.chooseRightSource);
+        }
         //form expiries input set to datetimepicker
-        $('#form-expires').datetimepicker({     
-            useSeconds: false,           
-            format:'MMMM D, YYYY HH:mm', 
-            minDate: moment().format('MMMM D, YYYY'),
-            minuteStepping:15         
+        $('#form-expires').datetimepicker({
+            autoclose: true,
+            todayBtn: true,
+            minuteStep: 15,
+            format: 'MM d, yyyy hh:ii',
+            minView: 0,
+            maxView: 3,
+            startView: 1
+        }).on("show", function() {
+            var d = new Date((new Date()).getTime() + (15*60*1000));
+            $(this).datetimepicker('setStartDate', d);  
         });
-        
- 
-        
+
+
+
         //create nice input type="file"
         $('input[type=file]').bootstrapFileInput();
-        
+
         //for bootstrap navigation auto collapse after click on item
-        $('.navbar-nav').click(function(){
-            if($('.navbar-header .navbar-toggle').css('display') !== 'none') {                
+        $('.navbar-nav').click(function() {
+            if ($('.navbar-header .navbar-toggle').css('display') !== 'none') {
                 $('.navbar-collapse').collapse('hide');
             }
         });
@@ -125,7 +156,11 @@
 
     //open server connection
     app.connectToServer = function() {
-        socket = new io();
+        if(!host)
+            socket = new io();
+        else 
+            socket = new io(host);
+        
         socket.on('connect', app.connectedToServer);
         socket.connect();
     };
@@ -229,6 +264,20 @@
         positionMarker.setMap(null);
         positionMarker = null;
         map = null;
+        
+        //deinitialize form componets
+        if(myVideo) 
+            app.cameraToggle(2);
+        else {
+            takenPicture = null;
+            document.getElementById('video-frame').style.display = 'none';
+            document.getElementById('preview').style.display = 'block';
+            document.getElementById('preview').src = "images/no-photo.png";
+        }
+        $('#new-alert').modal('hide');
+        document.getElementById('form-note').value = '';
+        document.getElementById('form-position').value = null;
+        document.getElementById('form-expires').value = null;
 
 
         document.getElementById('menu-logout').innerHTML = '<span class="glyphicon glyphicon-log-out"> </span> Logout';
@@ -271,10 +320,22 @@
 
 
     //METHODS FOR CAMERA
+    //method for choose right source (rear camera)
+    app.chooseRightSource = function(sourceInfos) {
+        var lastVideoSource = null;
+        for (var i = 0; i < sourceInfos.length; i++) {
+            var sourceInfo = sourceInfos[i];
+            if (sourceInfo.kind === 'video') {
+                lastVideoSource = sourceInfo.id;    
+            }             
+        }
+        if(lastVideoSource) 
+            navigator.myGetMedia({video: {optional: [{sourceId: lastVideoSource}]}}, app.cameraCallback, app.cameraError);
+    };
     //event camera connected, set stream to video frame
-    app.cameraCallback = function(stream) {        
+    app.cameraCallback = function(stream) {
         document.getElementById('form-take-photo').style.display = 'block';
-        if(!takenPicture) {
+        if (!takenPicture) {
             document.getElementById('video-frame').style.display = 'block';
             document.getElementById('preview').style.display = 'none';
         }
@@ -461,8 +522,10 @@
             return;
         }
 
-        //send alert to server
+        
         app.alert('info', 'New alert is sending to server.');
+        
+        //emit alert to server
         socket.emit('publish-alert', takenPicture, positionSplit[0], positionSplit[1], icon, note, expires, function(data, err) {
             if (err) {
                 app.alert('danger', err);
@@ -477,7 +540,14 @@
         document.getElementById('form-note').value = '';
         document.getElementById('form-position').value = null;
         document.getElementById('form-expires').value = null;
-        app.cameraToggle(2);
+        if(myVideo) 
+            app.cameraToggle(2);
+        else {
+            takenPicture = null;
+            document.getElementById('video-frame').style.display = 'none';
+            document.getElementById('preview').style.display = 'block';
+            document.getElementById('preview').src = "images/no-photo.png";
+        }
 
     };
 
@@ -496,10 +566,8 @@
         map = new google.maps.Map(document.getElementById('map-canvas'),
                 mapOptions);
 
-        //create position marker 
-
+        //create position marker
         positionMarker = new google.maps.Marker({
-            position: location,
             map: map,
             animation: google.maps.Animation.DROP,
             icon: 'images/icons/my-location.png',
@@ -541,19 +609,19 @@
                 var expiresOn = new Date(data.expire_on);
                 var now = (new Date()).getTime();
                 var percentage = validator.toInt(((now - published.getTime()) * 100) / (expiresOn.getTime() - published.getTime()));
-                var contentString = '<div id="infowindow-content">' +                      
+                var contentString = '<div id="infowindow-content">' +
                         '<p><span class="label label-default">Published on: ' + moment(published).format('MMMM DD, YYYY HH:mm') + '</span> <span class="label label-warning">Expires on: ' + moment(expiresOn).format('MMMM DD, YYYY HH:mm') + '</span></p>' +
-                        '<img src="' + data.path + '" alt="Photo" id="content-image" />' +                        
-                        '<p><strong>Note: </strong>' + data.note + '</p>' +   
-                        '<div class="nopopup"><div class="fb-like" data-href="'  + document.URL.replace(/#.*$/, '') +'#show-' + data.id + '" data-layout="button_count" data-action="like" data-show-faces="true" data-share="false"></div></div>' +
+                        '<img src="' + data.path + '" alt="Photo" id="content-image" />' +
+                        '<p><strong>Note: </strong>' + data.note + '</p>' +
+                        '<div class="nopopup"><div class="fb-like" data-href="' + document.URL.replace(/#.*$/, '') + '#show-' + data.id + '" data-layout="button_count" data-action="like" data-show-faces="true" data-share="false"></div></div>' +
                         '<div class="progress"> <div class="progress-bar" role="progressbar" aria-valuenow="' + percentage + '" aria-valuemin="0" aria-valuemax="100" style="width: ' + percentage + '%;">' + percentage + '% </div> </div>' +
-                        removeButton +                        
+                        removeButton +
                         '</div>';
 
                 infoWindow.setContent(contentString);
                 infoWindow.open(map, alertMarkers[data.id]);
 
-	
+
 
 
                 FB.XFBML.parse();

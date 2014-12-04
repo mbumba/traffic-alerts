@@ -1,5 +1,6 @@
 /* TRAFFIC ALERTS NODEJS SERVER 
  * Martin Bumba and Sara Fatih
+ * 2014
  * */
 
 /* LOADING LIBS */
@@ -51,41 +52,73 @@ var io = require('socket.io')(server);
 //listen on socket for new connection
 io.on('connection', function(socket) {
     //local variables for connection
-    var facebookId = null;
+    var facebookAppId = null;
+    var facebookUserId = null;
     var messagePrefix = socket.request.connection.remoteAddress + ' :: ';
     
     
     functions.log(messagePrefix + 'is connected to server');
     
+    /*  Alerts which are emitted to client are represented like (object) with following specification
+        (object) alert                           
+     *  alert.id                 - id of alert
+     *  alert.facebook_app_id    - id of FB application in which, alert was published, thanks by this you can differentiate if alert is from your Facebook APP
+     *  alert.lat                - latitude
+     *  alert.lng                - longtitude
+     *  alert.icon               - icon type [1, 2, 3, 4]
+     *  alert.path               - relative path of alert image, if you want to show image in your site only join the server host part before image path
+     *  alert.note               - note
+     *  alert.owner              - (bool) true if this userand this Facebook APP is owner, false in another case
+     *  alert.published          - MySQL DATETIME FORMAT yyyy-MM-dd'T'HH:mm:ssZ, when alert was published
+     *  alert.expire_on          - MySQL DATETIME FORMAT yyyy-MM-dd'T'HH:mm:ssZ, when alert will expire
+     **/
+  
+    
     
     /* API 
-     * ON MESSAGE 'log-me' - login client by valid Facebook token
+     * ON MESSAGE 'log-me' - login client by valid Facebook token to server side
      * Params: 
-     *  facebookToken - valid facebook token for this application
+     *  facebookUserToken - valid facebook user token for some FB application
      *  callback(result, error) - function which will be called in client side
+     *    result - true or null
+     *    error - message or null
      */
-    socket.on('log-me', function(facebookToken, callback) {
+    socket.on('log-me', function(facebookUserToken, callback) {
+        //strictly check callback function
         if (typeof (callback) !== 'function')
             return;
-        FB.api('me', {fields: ['id', 'name'], access_token: facebookToken}, function(res) {
-            if (!res || res.error) {
-                callback(null, 'Facebook auth. token error!');
-                functions.log(messagePrefix + 'FB token error');
+        //check FB user token and get id and name if is valid
+        FB.api('me', {fields: ['id', 'name'], access_token: facebookUserToken}, function(user) {
+            if (!user || user.error) {
+                callback(null, 'Facebook auth. token error, token is not valid!');
+                functions.log(messagePrefix + 'FB token error, token is not valid!');
                 return;
             }
-            //if token is sucesfully checked            
-            //set the facebook ID in variable
-            facebookId = res.id;
-            functions.log(messagePrefix + 'has been logged in [Facebook id:' + facebookId + ', full name: ' + res.name + ']');
-            //join this socket to the room fro token checked
-            socket.join('token-checked');
+            //FB user token is valid, now get the facebook application id to differentiate 
+            FB.api('app', {fields: ['id', 'name'], access_token: facebookUserToken}, function(app) {
+                if (!app || app.error) {
+                    callback(null, 'Facebook auth. token error - cannot get FB app ID!');
+                    functions.log(messagePrefix + 'FB token error - cannot get FB app ID');
+                    return;
+                }
+                /*
+                If token is sucesfully checked set the FB user id and FB app id into prepared variables */
+                facebookUserId = user.id;
+                facebookAppId = app.id;
+                
+                //print log message
+                functions.log(messagePrefix + 'has been authenticated as [FB app id: ' +facebookAppId + ', FB user id:' + facebookUserId + ', full name: ' + user.name + ']');
+                
+                //join this socket connection to the room for token checked clients
+                socket.join('token-checked');
 
-            //change message preffix
-            messagePrefix = messagePrefix + facebookId + ' >> ';
+                //change message preffix
+                messagePrefix = messagePrefix + facebookAppId  + ' - ' + facebookUserId + ' >> ';
 
-            //call callback
-            if (callback !== null)
+                //call callback with true (user is sucesfully authenticated to server)
                 callback(true);
+            });
+            
 
         });
     });
@@ -94,14 +127,18 @@ io.on('connection', function(socket) {
      * ON MESSAGE 'get-list' (get list of alerts)
      * Params: 
      *  callback(result, error) - function which will be called in client side
+     *    result - array of (object) alerts or null
+     *    error - null or (string) message
      */
     socket.on('get-list', function(callback) {
-        if (typeof (callback) !== 'function')
-            return;
-        if (facebookId) {
+        //check if user is authenticated to server
+        if (facebookUserId) {
+            //strictly check callback function
+            if (typeof (callback) !== 'function')
+                return;
             //if token is sucesfully checked join this socket to the room
             socket.join('token-checked');
-            mysqlPool.query('SELECT `id`, `lat`, `lng`, `path`, `icon`, `note`, IF(`facebook_id` = ?, 1, 0) AS `owner`, `published`, `expire_on` FROM `alerts`', facebookId, function(err, rows) {
+            mysqlPool.query('SELECT `id`, `facebook_app_id`, `lat`, `lng`, `path`, `icon`, `note`, IF((`facebook_app_id` = ? AND `facebook_user_id` = ?), 1, 0) AS `owner`, `published`, `expire_on` FROM `alerts`', [facebookAppId, facebookUserId], function(err, rows) {
                 if (err === null) {
                     callback(rows);
                 }
@@ -124,12 +161,15 @@ io.on('connection', function(socket) {
      *  note - (string) text for note
      *  expires - (Date) expires date
      *  callback(result, error) - function which will be called in client side
+     *    result - (object) alert or null
+     *    error - null or (string) message
      */
-    socket.on('publish-alert', function(image, lat, lng, icon, note, expires, callback) {
-        if (typeof (callback) !== 'function')
-            return;
-        if (facebookId) {
-
+    socket.on('publish-alert', function(image, lat, lng, icon, note, expires, callback) {       
+        //check if user is authenticated to server
+        if (facebookUserId) {
+            //strictly check callback function
+            if (typeof (callback) !== 'function')
+                return;
             //check lat and lng
             if (!(validator.isFloat(lat) && validator.isFloat(lng))) {
                 callback(null, 'Lat or lng have no valid value (float expected).');
@@ -153,17 +193,24 @@ io.on('connection', function(socket) {
                 return;
             }
 
-            //get buffer from image
+            //check if image is not null or false
+            if(!image) {
+                callback(null, 'Image in alert is not valid!');
+                functions.log(messagePrefix + " bad argument image");
+                return;  
+            }            
+            //parse image
             var imageBuffer = functions.decodeBase64Image(image);
 
             //check image
-            if (imageBuffer !== null && imageType(imageBuffer) === 'jpg') {
+            if (!(imageBuffer !== null && imageType(imageBuffer.data) === 'jpg')) {
                 callback(null, 'Image in alert is not valid!');
                 functions.log(messagePrefix + " bad argument image");
                 return;
             }
+            
+            //validate expires datetime
             var expire_on = validator.toDate(expires);
-
             if (!expire_on) {
                 callback(null, 'Date is not valid!');
                 functions.log(messagePrefix + " wrong date");
@@ -176,7 +223,7 @@ io.on('connection', function(socket) {
             }
 
             //if everything is ok
-            mysqlPool.query('INSERT INTO `alerts` SET ?, `published` = NOW() ', {facebook_id: facebookId, lat: lat, lng: lng, icon: icon, note: note, expire_on: expire_on}, function(err, result) {
+            mysqlPool.query('INSERT INTO `alerts` SET ?, `published` = NOW() ', {facebook_app_id: facebookAppId, facebook_user_id: facebookUserId, lat: lat, lng: lng, icon: icon, note: note, expire_on: expire_on}, function(err, result) {
                 //db error?
                 if (err) {
                     callback(null, 'Error in saving alert to database. Please try to insert new alert later..');
@@ -208,16 +255,15 @@ io.on('connection', function(socket) {
                         functions.log(messagePrefix + 'Alert with id=' + result.insertId + ' is sucesfully saved');
 
                         //notify clients
-                        mysqlPool.query('SELECT `id`, `lat`, `lng`, `icon`, `path`, `note`, `published`, `expire_on` FROM `alerts` WHERE `id` = ?', result.insertId, function(err, rows) {
+                        mysqlPool.query('SELECT `id`, `facebook_app_id`, `lat`, `lng`, `icon`, `path`, `note`, `published`, `expire_on` FROM `alerts` WHERE `id` = ?', result.insertId, function(err, rows) {
                             if (err === null) {
                                 var row = rows[0];
-                                row.owner = 1;
-                                
                                 //notify sender
-                                callback(row);
-                                row.owner = 0;
-
+                                row.owner = 1;   
+                                callback(row);                                
+                                
                                 //notify other connected and token checked clients
+                                row.owner = 0;
                                 socket.broadcast.to('token-checked').emit('new-alert', row);
                             }
                         });
@@ -234,18 +280,22 @@ io.on('connection', function(socket) {
      * Params: 
      *  id - (int) id of alert
      *  callback(result, error) - function which will be called in client side
+     *    result - id of removed alert
+     *    error - null or (string) message
      */
-    socket.on('remove-alert', function(id, callback) {
-        if (typeof (callback) !== 'function')
+    socket.on('remove-alert', function(id, callback) {  
+        //check if user is authenticated to server
+        if (facebookUserId) {
+            //strictly check callback function
+            if (typeof (callback) !== 'function')
             return;
-        if (facebookId) {
-            //check if is valid id
+            //check if parameter id is valid number
             if (!(validator.isInt(id))) {
                 callback(null, 'Bad argument ID.');
                 functions.log(messagePrefix + ' bad argument id'); // + (!res ? 'error occurred' : res.error)
                 return;
             }
-            mysqlPool.query('SELECT `id`, `path` FROM `alerts` WHERE `id` = ? AND `facebook_id` = ?', [id, facebookId], function(err, rows) {
+            mysqlPool.query('SELECT `id`, `path` FROM `alerts` WHERE `id` = ? AND `facebook_app_id` = ? AND `facebook_user_id` = ? ', [id, facebookAppId, facebookUserId], function(err, rows) {
                 if (err === null && rows.length === 1) {
                     //remove file
                     fs.unlink('public/' + rows[0].path, function(err) {
@@ -272,22 +322,26 @@ io.on('connection', function(socket) {
                     });
                 }
                 else {
-                    callback(null, 'Alert cannot been removed. This alert is probably not yours!');
+                    functions.log(messagePrefix + 'no permissions for remove alert with id=' + id);
+                    callback(null, 'Alert cannot been removed. You are probably not logged into application in which alert was published or this alert is not yours!');
                     return;
                 }
             });
         }
-        else
+        else {
+            functions.log(messagePrefix + 'Alert with id=' + id + ' has been removed.');
             callback(null, 'You are not correctly logged into server. Please at first call message log-in with FB token!');
+        }
 
     });
     
     /* API 
-     * ON DISCONNECT - on disconnect client 
+     * ON DISCONNECT - on disconnected client 
      */
     socket.on('disconnect', function() {
         socket.leave(socket.room);
-        facebookId = null;
+        facebookUserId = null;
+        facebookAppId = null;
         functions.log(messagePrefix + 'has been disconnected');
         messagePrefix = null;
     });
@@ -296,7 +350,7 @@ io.on('connection', function(socket) {
 });
 
 
-//setup CronJob for expirated alerts (do each minute)
+//setup CronJob for expirated alerts (check every minute each minute)
 new CronJob('00 * * * * *', function() {
     mysqlPool.query('SELECT `id`, `path`, `expire_on` FROM `alerts` WHERE `expire_on` <= NOW()', function(err, rows) {
         if (err) {

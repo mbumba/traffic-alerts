@@ -1,12 +1,16 @@
-/* TRAFFIC ALERTS NODEJS SERVER FUNCTIONS 
+/* TRAFFIC ALERTS NODEJS SERVER 
  * Martin Bumba and Sara Fatih
+ * 2014
  * */
 
-/* Safe decode Base64Image 
+/* Decode Base64Image 
  * Params:
  *  dataString - (string) with Base64 encoded image
  * Returns:
- * (string) image or null when error
+ * null if it is not valid image or
+ * (object) with properties
+ *   type - type of image
+ *   data - with data of image
  */
 function decodeBase64Image(dataString) {
     var matches = dataString.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/),

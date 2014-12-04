@@ -103,8 +103,6 @@ div.alert-messages {
     width: 100%;
     margin-bottom: 10px;
 }
-/*Infowindow overflow fix
-.gm-style-iw, .gm-style-iw div { overflow-x:hidden!important; }*/
 
 /*Facebook like */
 .fb_edge_widget_with_comment span.fb_edge_comment_widget iframe.fb_ltr, .fb_edge_comment_widget {

@@ -1,5 +1,6 @@
 /* TRAFFIC ALERTS NODEJS SERVER CONFIGURATION
  * Martin Bumba and Sara Fatih
+ * 2014
  * */
 var config = { };
 

@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <title>Simple example of usage TrafficAlerts API (TA API)</title>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width">
+    </head>
+    <body>
+        <script type="text/javascript">
+            /* Simple example of usage TrafficAlerts API (TA API)
+             * This is ane example JavaScript code how to use the TA API to communicate with TrafficAlerts server to getting or emitting alerts in RealTime.
+             * TrafficAlerts API is based on WebSockets and especially on Socket.IO library. For usage of this API you need to import this library. This example is including this library.           
+             * The example is devided to two parts: 
+             * 
+             * 1. PART is the simple example, how to use Facebook login to get FB user access token, 
+             * becouse this token you need to emit by TA API becouse of authentication on TA server.
+             * 
+             * 2. PART is the part of TA API. It showing how to emit command and how to get responses from server in Real Time.
+             */
+
+            /* 1. PART
+             * FACEBOOK SDK FOR JAVASCRIPT
+             * This part is the example from Facebook SDK documentation ( https://developers.facebook.com/docs/facebook-login/login-flow-for-web/v2.2 )
+             * It is the basic implementation how login user to application using Facebook. Facebook after sucesfull user login will 
+             * provide you FB user access token which you need to pass across TrafficAlerts API (message 'log-me') if you want to use TrafficAlerts server part for your application.
+             * For this Facebook login you need to have generated your Facebook APP id. If you don't have it yet you can get it on: https://developers.facebook.com/ 
+             * Also you can get from this pages a lot of hints and help for future Facebook APP usage.
+             * Set your Facebook APP ID in line 64: "appId      : '{your-app-id}',"
+             */
+            // This is called with the results from from FB.getLoginStatus().
+            function statusChangeCallback(response) {
+                console.log('statusChangeCallback');
+                console.log(response);
+                // The response object is returned with a status field that lets the
+                // app know the current login status of the person.
+                // Full docs on the response object can be found in the documentation
+                // for FB.getLoginStatus().
+                if (response.status === 'connected') {
+                    // Logged into your app and Facebook.
+                    authenticatedByFacebook();
+                } else if (response.status === 'not_authorized') {
+                    // The person is logged into Facebook, but not your app.
+                    document.getElementById('status').innerHTML = 'Please log ' +
+                            'into this app.';
+                } else {
+                    // The person is not logged into Facebook, so we're not sure if
+                    // they are logged into this app or not.
+                    document.getElementById('status').innerHTML = 'Please log ' +
+                            'into Facebook.';
+                }
+            }
+
+            // This function is called when someone finishes with the Login
+            // Button.  See the onlogin handler attached to it in the sample
+            // code below.
+            function checkLoginState() {
+                FB.getLoginStatus(function(response) {
+                    statusChangeCallback(response);
+                });
+            }
+
+            window.fbAsyncInit = function() {
+                FB.init({
+                    appId: '{your-app-id}', // set you FB app ID here
+                    cookie: true, // enable cookies to allow the server to access 
+                    // the session
+                    xfbml: true, // parse social plugins on this page
+                    version: 'v2.1' // use version 2.1
+                });
+
+                // Now that we've initialized the JavaScript SDK, we call 
+                // FB.getLoginStatus().  This function gets the state of the
+                // person visiting this page and can return one of three states to
+                // the callback you provide.  They can be:
+                //
+                // 1. Logged into your app ('connected')
+                // 2. Logged into Facebook, but not your app ('not_authorized')
+                // 3. Not logged into Facebook and can't tell if they are logged into
+                //    your app or not.
+                //
+                // These three cases are handled in the callback function.
+
+                FB.getLoginStatus(function(response) {
+                    statusChangeCallback(response);
+                });
+
+            };
+
+            // Load the SDK asynchronously
+            (function(d, s, id) {
+                var js, fjs = d.getElementsByTagName(s)[0];
+                if (d.getElementById(id))
+                    return;
+                js = d.createElement(s);
+                js.id = id;
+                js.src = "//connect.facebook.net/en_US/sdk.js";
+                fjs.parentNode.insertBefore(js, fjs);
+            }(document, 'script', 'facebook-jssdk'));
+
+      
+            /* This function is called by Facebook API when user is sucesfully authenticated by Facebook.
+             */
+            function authenticatedByFacebook() {
+                //call function for initialize TrafficAlerts API
+                openConnectionToServer();
+            }
+
+            /* 
+             * 2.PART HOW USE TrafficAlerts API
+             * At first you need to create socket connection to server (http://cloud-25.skelabb.ltu.se:80).
+             * Then we will wait when user will be authenticated by Facebook and in this time we can start communicate with Traffic Alerts server.  
+             * 
+             * Each received alert from server is specified like object which contains following properties
+             * (object) alert                           
+             *  alert.id                 - id of alert
+             *  alert.facebook_app_id    - id of FB application in which, alert was published, thanks by this you can differentiate if alert is from your Facebook APP
+             *  alert.lat                - latitude
+             *  alert.lng                - longtitude
+             *  alert.icon               - icon type [1, 2, 3, 4]
+             *  alert.path               - relative path of alert image, if you want to show image in your site only join the server host part before image path
+             *  alert.note               - note
+             *  alert.owner              - (bool) true if this userand this Facebook APP is owner, false in another case
+             *  alert.published          - MySQL DATETIME FORMAT yyyy-MM-dd'T'HH:mm:ssZ when alert was published
+             *  alert.expire_on          - MySQL DATETIME FORMAT yyyy-MM-dd'T'HH:mm:ssZ when alert will expire
+             **/
+
+            //it can be usefull to have the server hostname in variable
+            var host = "http://cloud-25.skelabb.ltu.se";
+
+            //define socket variable
+            var socket;
+
+
+            /* Following function will open connection to server by TrafficAlerts API
+             * Also will specify event functions for commands incomming from server, 
+             * This commands will be called only for users which are authenticated by TA server.
+             */
+            function openConnectionToServer() {
+                //CREATE CONNECTION TO SERVER AND CONNECT
+                socket = new io(host + ":80");
+                socket.connect();
+
+                //INCOMMING COMMANDS
+                /*
+                 * Received command 'new-alert' - on server was published new alert
+                 * @param {callback(object alert)} 
+                 */
+                socket.on('new-alert', function(alert) {
+                    /* 
+                     *  (object) alert with specification mentioned above
+                     *  
+                     */
+
+                    //append alert note following by image into div
+                    document.getElementById('alerts').innerHTML += alerts[i].note +
+                            '<br />' +
+                            '<img src="' + host + '/' + alerts[i].path + '" height="100" />' +
+                            '<br />';
+
+                });
+                /*
+                 * Received command 'removed-alert' - alert has been removed
+                 * @param {callback(id)} 
+                 */
+                socket.on('removed-alert', function(id) {
+                    /* 
+                     *  id   - id of removed alert
+                     *  
+                     *  
+                     *  Do something
+                     */
+                });
+
+
+
+                //AUTHENTICATE ME TO SERVER
+                /*
+                 * Emit command 'log-me' - autheniticate me by FB user token
+                 * @param {string} FB user access token
+                 * @param {function(result, error)} callback
+                 */
+                socket.emit('log-me', FB.getAuthResponse()['accessToken'], function(result, error) {
+                    /*
+                     * result - (bool) true if authenitication was sucesfull
+                     * error  - (string) only if there is an error
+                     */
+                    if (error) {
+                        //there is an authentication error FB user token is probably not longer valid
+                        console.log('log-me error: ' + error);
+                        return;
+                    }
+
+                    /* Everything is okay, user is sucesfully authenticated to TA server. From this point you can call every command from TA API.
+                     * In this example we will call method which have sequence of commands
+                     */
+                    exampleOfApi();
+
+                });
+            }
+
+
+            //EXAMPLE
+            /* Following function is an example of sequence of TA API commands
+             */
+            function exampleOfApi() {
+
+                //GET LIST OF ALERTS
+                /*
+                 * Emit command 'get-list'
+                 * This command will return array of all alerts in callback.
+                 * @param {function(alerts, error)} callback
+                 */
+                socket.emit('get-list', function(alerts, error) {
+                    /*
+                     * alerts - (array) of object alert, specified above
+                     * error  - (string) only if there is an error
+                     */
+                    if (error) {
+                        //error in getting alerts, try it later
+                        console.log('get-list error: ' + error);
+                        return;
+                    }
+                    //iterate in alerts
+                    for (var i = 0; i < alerts.length; i++) {
+                        //append alert note following by image into div
+                        document.getElementById('alerts').innerHTML += alerts[i].note +
+                                '<br />' +
+                                '<img src="' + host + '/' + alerts[i].path + '" height="100" />' +
+                                '<br />';
+                    }
+
+
+                });
+
+                //REMOVE ALERT WITH ID
+                /*
+                 * Emit command 'remove-alert'
+                 * This command will remove alert with specific id, but  there are 2 strict constraints:
+                 *  - alert can remove only same user which published this alert
+                 *  - alert can remove this user only from Facebook APP from which was published
+                 * @param {id} id of alert which should be removed
+                 * @param {function(result, error)} callback
+                 */
+                socket.emit('remove-alert', 1, function(result, error) {
+                    /*
+                     * result - (bool) true, if sucesfull 
+                     * error  - (string) only if there is an error
+                     * 
+                     * This example will return error:
+                     * Alert cannot been removed. You are probably not logged into application in which alert was published or this alert is not yours!
+                     * Becouse I'm trying to remove alert with id=1 which was uploaded from another FB app and by another user. 
+                     */
+                    console.log(error);
+
+                });
+
+                //PUBLISH NEW ALERT
+                /*
+                 * Emit command 'publish-alert'
+                 * This command will publish new alert.
+                 * @param {image} Base64 encoded JPEG image, good tutorial how to read image in HTML5 http://blog.teamtreehouse.com/reading-files-using-the-html5-filereader-api 
+                 *                and here how to get JPEG instead of PNG http://theshravan.net/blog/get-image-data-url-using-javascript/
+                 * @param {lat} latitude
+                 * @param {lng} longtitude
+                 * @param {icon} icon type [1, 2, 3, 4]
+                 * @param {note} note
+                 * @param {expires} (Date) datetime in future when alert will expire                
+                 * @param {function(alert, error)} callback
+                 */
+                socket.emit('publish-alert', null, 65.59, 22.02, 2, "This is the test alert", new Date((new Date()).getTime() + (30 * 60 * 1000)), function(alert, error) {
+                    /*
+                     * alert - (object) alert, specified above
+                     * error  - (string) only if there is an error
+                     * 
+                     * This example will return error:
+                     * Image in alert is not valid! 
+                     * Becouse instead of Base64 encoded JPEG image i'm passing null in this sample
+                     */
+                    console.log(error);
+
+                });
+
+            }
+        </script>  
+
+        <!--
+           Below we include the Login Button social plugin. This button uses
+           the JavaScript SDK to present a graphical Login button that triggers
+           the FB.login() function when clicked.
+        -->
+
+        <fb:login-button scope="public_profile,email" onlogin="checkLoginState();">
+        </fb:login-button>
+        <div id="status">
+        </div>
+    
+        <!--
+           Following div will contain data of alerts
+        -->
+        <div id="alerts">
+        </div>
+
+        <!--
+           Import Socket.IO library. MANDATORY
+        -->
+        <script src="js/socket.io.js" type="text/javascript"></script>
+
+</body>
+</html>
