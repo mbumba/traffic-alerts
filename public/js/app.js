@@ -58,32 +58,21 @@
         //wait for FB API which is loaded asysnchronously and  then check login
         app.fbEnsureInit(app.checkLogin);
 
-        //initialize geolocation
-        navigator.geolocation.watchPosition(app.positionCallback, app.positionError,
-                {
-                    timeout: Infinity,
-                    enableHighAccuracy: true,
-                    maximumAge: 3 * 24 * 60 * 60 * 1000
-                });
-
-
-
-   
-
         //initialize camera
         navigator.myGetMedia = (navigator.getUserMedia ||
                 navigator.webkitGetUserMedia ||
                 navigator.mozGetUserMedia ||
                 navigator.msGetUserMedia);
         
-        //when mygetmedia is available
-        if (typeof navigator.myGetMedia !== 'undefined') {
-            navigator.myGetMedia({video: true}, app.cameraCallback, app.cameraError);
-        }
-        
-        //this part is for users with Chrome > 30 and is for change the camera to back one                        
-        if (typeof MediaStreamTrack !== 'undefined' && typeof MediaStreamTrack.getSources !== 'undefined') {            
-            MediaStreamTrack.getSources(app.chooseRightSource);
+        //get camera, when myGetmedia is available
+        if (typeof navigator.myGetMedia !== 'undefined') {      
+            //this part is for users with Chrome > 30 and is for change the camera to back one                        
+            if (typeof MediaStreamTrack !== 'undefined' && typeof MediaStreamTrack.getSources !== 'undefined') {            
+                MediaStreamTrack.getSources(app.chooseRightSource);
+            }
+            else {
+                navigator.myGetMedia({video: true}, app.cameraCallback, app.cameraError);
+            }
         }
         //form expiries input set to datetimepicker
         $('#form-expires').datetimepicker({
@@ -222,7 +211,13 @@
                 document.getElementById('menu-logout').innerHTML = document.getElementById('menu-logout').innerHTML + ' [' + response.name + ']';
             }
         });
-
+        //initialize geolocation
+        navigator.geolocation.watchPosition(app.positionCallback, app.positionError,
+                {
+                    timeout: Infinity,
+                    enableHighAccuracy: true,
+                    maximumAge: 3 * 24 * 60 * 60 * 1000
+                });
 
         initialized = true;
     };
@@ -362,10 +357,12 @@
     };
     //event click on "New alert"
     app.showNewAlertModal = function() {
+        //remove the listener for click on map(Form get position from map)
         if (clickMapListenerHandle !== null) {
             google.maps.event.removeListener(clickMapListenerHandle);
             clickMapListenerHandle = null;
         }
+        //show modal
         $('#new-alert').modal('show');
     };
 
@@ -417,12 +414,14 @@
             app.alert('danger', 'Choosen file must be JPEG image!');
             return;
         }
+        //initialize FileReader
         var fr = new FileReader();
         fr.onloadend = function(evt) {
             if (evt.target.readyState === FileReader.DONE) {
                 var image = new Image;
                 image.src = evt.target.result;
                 image.onload = function() {
+                    //after load, get file as JPEG in (smaller size)
                     var canvas = document.createElement('canvas');
                     document.body.appendChild(canvas);
                     var context = canvas.getContext('2d');
@@ -439,6 +438,7 @@
                 };
             }
         };
+        //read the file from file input
         fr.readAsDataURL(e.target.files[0]); // get captured image as data URI
     };
 
@@ -733,10 +733,14 @@
     //HISTORY
     app.historyPopState = function(e) {
         var state = e.state;
+        console.log(state);
         if (state && state.key && state.id) {
             if (state.key === 'show') {
                 app.showAlert(state.id, false);
-            }
+            }                
+        }
+        else {
+            infoWindow.close();
         }
     };
 

@@ -38,8 +38,11 @@ var express = require('express');
 var app = express();
 //create server
 var server = require('http').createServer(app);
-// Static routing to public folder
+
+//STATIC ROUTING TO FOLDER WITH CLIENT PART, IF YOU DON'T WANT USE CLIENT PART COMMENT FOLLOWING LINE
 app.use(express.static(__dirname + '/public'));
+
+
 //initialize web server and listening on port
 server.listen(config.port, function() {
     functions.log('Web server is listening at port: ' + config.port);
@@ -82,11 +85,14 @@ io.on('connection', function(socket) {
      *  callback(result, error) - function which will be called in client side
      *    result - true or null
      *    error - message or null
+     *    
      */
     socket.on('log-me', function(facebookUserToken, callback) {
         //strictly check callback function
         if (typeof (callback) !== 'function')
             return;
+        //sanitize FB user access token
+        facebookUserToken = validator.escape(validator.toString(facebookUserToken));
         //check FB user token and get id and name if is valid
         FB.api('me', {fields: ['id', 'name'], access_token: facebookUserToken}, function(user) {
             if (!user || user.error) {
@@ -127,7 +133,7 @@ io.on('connection', function(socket) {
      * ON MESSAGE 'get-list' (get list of alerts)
      * Params: 
      *  callback(result, error) - function which will be called in client side
-     *    result - array of (object) alerts or null
+     *    result - array of (object) alert or null
      *    error - null or (string) message
      */
     socket.on('get-list', function(callback) {
@@ -264,6 +270,12 @@ io.on('connection', function(socket) {
                                 
                                 //notify other connected and token checked clients
                                 row.owner = 0;
+                                
+                                /* API 
+                                 * EMIT MESSAGE 'new-alert' - new alert published - notify clients
+                                 * Params: 
+                                 *  row - (object) alert
+                                 */
                                 socket.broadcast.to('token-checked').emit('new-alert', row);
                             }
                         });
@@ -317,6 +329,12 @@ io.on('connection', function(socket) {
                             //notify owner
                             callback(id);
                             //notify other connected and token checked clients except owner
+                            
+                            /* API 
+                             * EMIT MESSAGE 'removed-alert' - alert removed, notify clients
+                             * Params: 
+                             *  id - id of removed alert
+                             */
                             socket.broadcast.to('token-checked').emit('removed-alert', id);
                         });
                     });
@@ -376,6 +394,11 @@ new CronJob('00 * * * * *', function() {
                     //sucesfully removed
                     functions.log('CRON: alert with id=' + row.id + ' has been removed, because of expiration date.');
                     //broadcast message to everyone about remove
+                    /* API 
+                     * EMIT MESSAGE 'removed-alert' - alert removed, notify clients
+                     * Params: 
+                     *  id - id of removed alert
+                     */
                     io.to('token-checked').emit('removed-alert', row.id);
                 });
             });

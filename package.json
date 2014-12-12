@@ -1,6 +1,6 @@
 {
   "name" : "traffic-alerts",
-  "version" : "0.1.5",
+  "version" : "0.1.6",
   "description" : "The main goal behind this application is to raise awareness about road problems among the users. That way, drivers can avoid going through some path just by consulting this application.",
   "main" : "./app.js",
   "author" : {
