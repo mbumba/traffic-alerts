@@ -113,3 +113,7 @@ div.alert-messages {
   width: 70%;
   height: 30px;
 }
+
+textarea {
+    resize: none;
+}

@@ -88,6 +88,8 @@
             var d = new Date((new Date()).getTime() + (15*60*1000));
             $(this).datetimepicker('setStartDate', d);  
         });
+        $('#form-expires').click(function() { $('#form-expires').datetimepicker('show'); });
+        
 
 
 
@@ -322,15 +324,19 @@
     //METHODS FOR CAMERA
     //method for choose right source (rear camera)
     app.chooseRightSource = function(sourceInfos) {
-        var lastVideoSource = null;
+        var videoSource = null;
         for (var i = 0; i < sourceInfos.length; i++) {
             var sourceInfo = sourceInfos[i];
             if (sourceInfo.kind === 'video') {
-                lastVideoSource = sourceInfo;    
+                if(sourceInfo.label && /back/i.test(sourceInfo.label)) {
+                    videoSource = sourceInfo.id; //sourceInfo.label || 'camera ' + (i + 1)
+                    break;
+                }                
+                videoSource = sourceInfo.id;                
             }             
         }
-        if(lastVideoSource) 
-            navigator.myGetMedia({video: {optional: [{sourceId: lastVideoSource}]}}, app.cameraCallback, app.cameraError);
+        if(videoSource) 
+            navigator.myGetMedia({video: {optional: [{sourceId: videoSource}]}}, app.cameraCallback, app.cameraError);
     };
     //event camera connected, set stream to video frame
     app.cameraCallback = function(stream) {
@@ -370,8 +376,8 @@
         }
         //show modal
         $('#new-alert').modal('show');
-    };
-
+    };    
+    //listener for link in new alert
     app.newAlertLinkListener = function(e) {
         e.preventDefault();
         app.showAlert($(this).attr("data-id"), true);
@@ -732,7 +738,7 @@
             var regExp = /#show\-(\d+)/gi;
             var results = regExp.exec(location.hash);
             if (results) {
-                app.showAlert(results[1]);
+                app.showAlert(results[1], true);
             }
         }
     };
