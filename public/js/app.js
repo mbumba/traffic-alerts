@@ -28,6 +28,7 @@
     var geoLat = null;
     var geoLng = null;
     var geoInitialized = false;
+    var geoErrorShowed = false;
 
     //maps markers and info window
     var positionMarker = null;
@@ -309,7 +310,11 @@
     };
     //event geolocation error 
     app.positionError = function(error) {
-        app.alert('danger', 'Sensor of position cannot be initialized. Some features of this application are disabled, if you want to use those please refresh browser and allow the position sensor.');
+        if(!geoErrorShowed) {
+            app.alert('danger', 'Sensor of position cannot be initialized. Some features of this application are disabled, if you want to use those please refresh browser and allow the position sensor.');
+            geoErrorShowed = true;
+            console.log(error);
+        }
     };
 
 
@@ -321,7 +326,7 @@
         for (var i = 0; i < sourceInfos.length; i++) {
             var sourceInfo = sourceInfos[i];
             if (sourceInfo.kind === 'video') {
-                lastVideoSource = sourceInfo.id;    
+                lastVideoSource = sourceInfo;    
             }             
         }
         if(lastVideoSource) 
@@ -341,6 +346,7 @@
     //event camera error event
     app.cameraError = function(error) {
         app.alert('warning', 'Camera cannot be initialized. Some features of this application are disabled, if you want to use those please refresh browser and allow camera.');
+        console.log(error);
     };
 
     //MENU ITEMS EVENTS
@@ -635,6 +641,7 @@
                     var state = {key: 'show', id: data.id};
                     window.history.pushState(state, 'Alert ' + data.id, '#show-' + data.id);
                 }
+     
 
             });
 
@@ -733,7 +740,7 @@
     //HISTORY
     app.historyPopState = function(e) {
         var state = e.state;
-        console.log(state);
+        
         if (state && state.key && state.id) {
             if (state.key === 'show') {
                 app.showAlert(state.id, false);
