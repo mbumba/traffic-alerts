@@ -30,7 +30,7 @@ function decodeBase64Image(dataString) {
  *  message - (string) log message
  */
 function log(message) {
-    console.log('[' + getDateTime() + '] ' + message)
+    console.log('[' + getDateTime() + '] ' + message);
 }
 /* Simple get datetime in this format: DD.MM.YYYY HH:MM:SS 
  * Params: *  
